@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Environment files (Secrets - NEVER commit)
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# Build & Output
+dist/
+build/
+**/dist/
+**/build/
+
+# Logs
+*.log
+**/logs/
+
+# Prisma generated files (if any binary/cache)
+**/prisma/*.db
+
+# IDE & System
+.DS_Store
+.vscode/
+.idea/
