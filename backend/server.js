@@ -2,17 +2,21 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const prisma = require('./src/config/prisma');
+const userRoutes = require('./src/routes/userRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS configuration
+// CORS configuration supporting custom headers and local dev origins
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://127.0.0.1:5175'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-clerk-user-id', 'x-requested-with']
 }));
+
+// OPTIONS Preflight Handler
+app.options('*', cors());
 
 // Body parsing middleware
 app.use(express.json());
@@ -49,6 +53,9 @@ app.get('/api/health', async (req, res) => {
     });
   }
 });
+
+// API Routes
+app.use('/api/users', userRoutes);
 
 // Root route redirect/info
 app.get('/', (req, res) => {
