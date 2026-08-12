@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const prisma = require('./src/config/prisma');
 const userRoutes = require('./src/routes/userRoutes');
+const adminRoutes = require('./src/routes/adminRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -56,6 +57,7 @@ app.get('/api/health', async (req, res) => {
 
 // API Routes
 app.use('/api/users', userRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Root route redirect/info
 app.get('/', (req, res) => {
