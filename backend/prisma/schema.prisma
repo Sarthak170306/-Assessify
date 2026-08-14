@@ -15,6 +15,17 @@ enum Role {
   STUDENT
 }
 
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum QuizStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
 enum QuestionType {
   MULTIPLE_CHOICE
   TRUE_FALSE
@@ -28,16 +39,19 @@ enum AttemptStatus {
 }
 
 model User {
-  id        String   @id
-  email     String   @unique
+  id        String     @id @default(uuid())
+  clerkId   String     @unique
+  email     String     @unique
+  name      String?
   firstName String?
   lastName  String?
   imageUrl  String?
-  role      Role     @default(STUDENT)
-  quizzes   Quiz[]   @relation("CreatedQuizzes")
+  role      Role       @default(STUDENT)
+  status    UserStatus @default(ACTIVE)
+  quizzes   Quiz[]     @relation("CreatedQuizzes")
   attempts  Attempt[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
 
 model Category {
@@ -50,19 +64,21 @@ model Category {
 }
 
 model Quiz {
-  id          String     @id @default(uuid())
-  title       String
-  description String?
-  timeLimit   Int        @default(30)
-  isPublished Boolean    @default(false)
-  categoryId  String
-  category    Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  createdById String
-  createdBy   User       @relation("CreatedQuizzes", fields: [createdById], references: [id], onDelete: Cascade)
-  questions   Question[]
-  attempts    Attempt[]
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id           String     @id @default(uuid())
+  title        String
+  description  String?
+  timeLimit    Int        @default(30)
+  passingScore Int        @default(70)
+  isPublished  Boolean    @default(false)
+  status       QuizStatus @default(DRAFT)
+  categoryId   String
+  category     Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdById  String
+  createdBy    User       @relation("CreatedQuizzes", fields: [createdById], references: [id], onDelete: Cascade)
+  questions    Question[]
+  attempts     Attempt[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 }
 
 model Question {

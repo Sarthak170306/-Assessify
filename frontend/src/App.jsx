@@ -12,8 +12,10 @@ import ProtectedRoute from './components/ProtectedRoute';
 import AdminLayout from './components/layouts/AdminLayout';
 import StudentLayout from './components/layouts/StudentLayout';
 
-// Admin Pages
+// Admin Pages (Real Implementations)
 import AdminDashboard from './pages/admin/AdminDashboard';
+import QuizManagement from './pages/admin/QuizManagement';
+import CategoryManagement from './pages/admin/CategoryManagement';
 import PlaceholderView from './pages/PlaceholderView';
 
 // Student Pages
@@ -49,23 +51,7 @@ function RootRedirect() {
   return <Navigate to="/student/dashboard" replace />;
 }
 
-// Module Placeholders
-const QuizManagement = () => (
-  <PlaceholderView
-    title="Quiz Management"
-    description="Create, edit, and publish quizzes with AI question generation."
-    badge="Admin Module"
-  />
-);
-
-const CategoryManagement = () => (
-  <PlaceholderView
-    title="Category Management"
-    description="Organize quizzes into structured domains and tags."
-    badge="Admin Module"
-  />
-);
-
+// Module Placeholders (Remaining modules)
 const UserManagement = () => (
   <PlaceholderView
     title="User Management"
