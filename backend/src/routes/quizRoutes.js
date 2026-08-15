@@ -5,7 +5,8 @@ const {
   getAllQuizzes,
   getQuizById,
   updateQuiz,
-  deleteQuiz
+  deleteQuiz,
+  getStudentQuizzes
 } = require('../controllers/quizController');
 const { requireAuth } = require('../middleware/auth');
 const { requireRole } = require('../middleware/roleMiddleware');
@@ -13,6 +14,9 @@ const { requireRole } = require('../middleware/roleMiddleware');
 /**
  * Quiz Routes (/api/quizzes)
  */
+
+// Student Catalog Fallback Endpoint
+router.get('/student/catalog', getStudentQuizzes);
 
 // Read Quizzes (Accessible to authenticated users)
 router.get('/', getAllQuizzes);

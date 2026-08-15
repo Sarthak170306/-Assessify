@@ -323,10 +323,178 @@ const deleteQuiz = async (req, res) => {
   }
 };
 
+// 6. Retrieve Published Student Quizzes Catalog (GET /api/student/quizzes)
+const getStudentQuizzes = async (req, res) => {
+  try {
+    const { category, categoryId, search } = req.query;
+
+    const targetCategory = category || categoryId;
+
+    const where = {
+      status: 'PUBLISHED'
+    };
+
+    if (targetCategory) {
+      where.categoryId = targetCategory;
+    }
+
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { description: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    const rawQuizzes = await prisma.quiz.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        category: { select: { id: true, name: true } },
+        _count: { select: { questions: true } }
+      }
+    });
+
+    const quizzes = rawQuizzes.map((q) => ({
+      id: q.id,
+      title: q.title,
+      description: q.description,
+      timeLimit: q.timeLimit,
+      passingScore: q.passingScore,
+      status: q.status,
+      category: q.category ? { id: q.category.id, name: q.category.name } : null,
+      categoryName: q.category?.name || 'Uncategorized',
+      totalQuestions: q._count?.questions || 0,
+      createdAt: q.createdAt
+    }));
+
+    return res.status(200).json({
+      success: true,
+      count: quizzes.length,
+      quizzes
+    });
+  } catch (err) {
+    console.error('getStudentQuizzes error:', err);
+    return res.status(500).json({
+      error: 'InternalServerError',
+      message: 'Failed to fetch student quiz catalog.',
+      details: err.message
+    });
+  }
+};
+
+// 7. Retrieve Published Student Quiz Details for Pre-start Screen (GET /api/student/quizzes/:id)
+const getStudentQuizById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const quiz = await prisma.quiz.findUnique({
+      where: { id },
+      include: {
+        category: { select: { id: true, name: true, description: true } },
+        _count: { select: { questions: true } }
+      }
+    });
+
+    if (!quiz || quiz.status !== 'PUBLISHED') {
+      return res.status(404).json({
+        error: 'NotFound',
+        message: 'Assessment quiz not found or is not currently available for student attempts.'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      quiz: {
+        id: quiz.id,
+        title: quiz.title,
+        description: quiz.description,
+        timeLimit: quiz.timeLimit,
+        passingScore: quiz.passingScore,
+        status: quiz.status,
+        category: quiz.category ? { id: quiz.category.id, name: quiz.category.name } : null,
+        categoryName: quiz.category?.name || 'Uncategorized',
+        totalQuestions: quiz._count?.questions || 0,
+        createdAt: quiz.createdAt
+      }
+    });
+  } catch (err) {
+    console.error('getStudentQuizById error:', err);
+    return res.status(500).json({
+      error: 'InternalServerError',
+      message: 'Failed to fetch assessment details.',
+      details: err.message
+    });
+  }
+};
+
+// 8. Retrieve Student Quiz Questions for Live Test Engine (GET /api/student/quizzes/:id/questions)
+const getStudentQuizQuestions = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const quiz = await prisma.quiz.findUnique({
+      where: { id },
+      include: {
+        category: { select: { id: true, name: true } },
+        questions: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            options: {
+              orderBy: { createdAt: 'asc' },
+              select: {
+                id: true,
+                text: true
+                // EXCLUDE isCorrect to prevent client-side answer sniffing
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!quiz || quiz.status !== 'PUBLISHED') {
+      return res.status(404).json({
+        error: 'NotFound',
+        message: 'Assessment quiz not found or is not currently available.'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      quiz: {
+        id: quiz.id,
+        title: quiz.title,
+        description: quiz.description,
+        timeLimit: quiz.timeLimit,
+        passingScore: quiz.passingScore,
+        categoryName: quiz.category?.name || 'Uncategorized',
+        totalQuestions: quiz.questions.length
+      },
+      questions: quiz.questions.map((q) => ({
+        id: q.id,
+        text: q.text,
+        type: q.type,
+        points: q.points,
+        options: q.options
+      }))
+    });
+  } catch (err) {
+    console.error('getStudentQuizQuestions error:', err);
+    return res.status(500).json({
+      error: 'InternalServerError',
+      message: 'Failed to fetch assessment questions.',
+      details: err.message
+    });
+  }
+};
+
 module.exports = {
   createQuiz,
   getAllQuizzes,
   getQuizById,
   updateQuiz,
-  deleteQuiz
+  deleteQuiz,
+  getStudentQuizzes,
+  getStudentQuizById,
+  getStudentQuizQuestions
 };

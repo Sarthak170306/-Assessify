@@ -18,8 +18,12 @@ import QuizManagement from './pages/admin/QuizManagement';
 import CategoryManagement from './pages/admin/CategoryManagement';
 import PlaceholderView from './pages/PlaceholderView';
 
-// Student Pages
+// Student Pages (Real Implementations)
 import StudentDashboard from './pages/student/StudentDashboard';
+import QuizCatalog from './pages/student/QuizCatalog';
+import QuizDetails from './pages/student/QuizDetails';
+import QuizAttemptEngine from './pages/student/QuizAttemptEngine';
+import QuizResult from './pages/student/QuizResult';
 
 /**
  * Root Redirector Component
@@ -65,14 +69,6 @@ const Analytics = () => (
     title="Analytics & Telemetry"
     description="View platform metrics, attempt performance, and detailed telemetry."
     badge="Admin Module"
-  />
-);
-
-const BrowseQuizzes = () => (
-  <PlaceholderView
-    title="Browse Quizzes"
-    description="Explore available assessment topics and start new quiz attempts."
-    badge="Student Module"
   />
 );
 
@@ -134,7 +130,10 @@ export default function App() {
         >
           <Route index element={<Navigate to="/student/dashboard" replace />} />
           <Route path="dashboard" element={<StudentDashboard />} />
-          <Route path="quizzes" element={<BrowseQuizzes />} />
+          <Route path="quizzes" element={<QuizCatalog />} />
+          <Route path="quizzes/:id" element={<QuizDetails />} />
+          <Route path="quiz/:id/attempt" element={<QuizAttemptEngine />} />
+          <Route path="quiz-result/:attemptId" element={<QuizResult />} />
           <Route path="history" element={<AttemptHistory />} />
           <Route path="attempts" element={<Navigate to="/student/history" replace />} />
           <Route path="leaderboard" element={<Leaderboard />} />

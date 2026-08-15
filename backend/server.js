@@ -6,6 +6,8 @@ const userRoutes = require('./src/routes/userRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const quizRoutes = require('./src/routes/quizRoutes');
 const categoryRoutes = require('./src/routes/categoryRoutes');
+const studentRoutes = require('./src/routes/studentRoutes');
+const attemptRoutes = require('./src/routes/attemptRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -62,6 +64,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quizzes', quizRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/student', studentRoutes);
+app.use('/api/attempts', attemptRoutes);
 
 // Root route redirect/info
 app.get('/', (req, res) => {
