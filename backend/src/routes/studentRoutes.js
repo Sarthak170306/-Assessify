@@ -9,6 +9,7 @@ const {
   submitAttempt, 
   getAttemptHistory 
 } = require('../controllers/attemptController');
+const { getAttemptAIFeedback } = require('../controllers/aiFeedbackController');
 
 /**
  * Student Portal Routes (/api/student)
@@ -28,5 +29,9 @@ router.post('/quizzes/:id/submit', submitAttempt);
 
 // Student Attempt History (GET /api/student/history)
 router.get('/history', getAttemptHistory);
+
+// AI Feedback Endpoint (POST /api/student/attempts/:attemptId/feedback)
+router.post('/attempts/:attemptId/feedback', getAttemptAIFeedback);
+router.get('/attempts/:attemptId/feedback', getAttemptAIFeedback);
 
 module.exports = router;

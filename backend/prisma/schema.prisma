@@ -5,8 +5,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
@@ -115,6 +116,7 @@ model Attempt {
   totalQuestions Int           @default(0)
   status         AttemptStatus @default(IN_PROGRESS)
   completedAt    DateTime?
+  aiFeedback     Json?
   answers        Answer[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt

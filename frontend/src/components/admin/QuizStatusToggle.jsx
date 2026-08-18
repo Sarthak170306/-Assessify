@@ -14,17 +14,22 @@ import {
  * Quiz Status Pipeline & Publishing Workflow Component
  * Manages quiz status transitions ('DRAFT', 'PUBLISHED', 'ARCHIVED') with publish validation.
  */
-export default function QuizStatusToggle({ quiz, onStatusChange }) {
+export default function QuizStatusToggle({ 
+  quiz, 
+  status = 'DRAFT', 
+  onStatusChange = () => {}, 
+  isUpdating: initialIsUpdating = false 
+}) {
   const { user } = useUser();
   const { getToken } = useAuth();
 
-  const [isUpdating, setIsUpdating] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(initialIsUpdating);
   const [validationWarning, setValidationWarning] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
-  const currentStatus = quiz?.status || 'DRAFT';
+  const currentStatus = quiz?.status || status || 'DRAFT';
   const totalQuestions = quiz?.totalQuestions || quiz?.questions?.length || 0;
 
   // Validate publishing requirements
@@ -195,10 +200,8 @@ export default function QuizStatusToggle({ quiz, onStatusChange }) {
 }
 
 QuizStatusToggle.propTypes = {
-  quiz: PropTypes.object.isRequired,
+  quiz: PropTypes.object,
+  status: PropTypes.string,
   onStatusChange: PropTypes.func,
-};
-
-QuizStatusToggle.defaultProps = {
-  onStatusChange: null,
+  isUpdating: PropTypes.bool
 };

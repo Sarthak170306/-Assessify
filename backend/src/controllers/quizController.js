@@ -1,4 +1,5 @@
 const prisma = require('../config/prisma');
+const { generateQuizFromAI } = require('../../services/aiService');
 
 /**
  * Quiz CRUD Controller (Express + Prisma)
@@ -444,7 +445,6 @@ const getStudentQuizQuestions = async (req, res) => {
               select: {
                 id: true,
                 text: true
-                // EXCLUDE isCorrect to prevent client-side answer sniffing
               }
             }
           }
@@ -488,6 +488,216 @@ const getStudentQuizQuestions = async (req, res) => {
   }
 };
 
+// 9. Generate AI Quiz Preview (POST /api/quizzes/generate-ai)
+const generateAIQuiz = async (req, res) => {
+  try {
+    const { topic, categoryId, categoryName, difficulty, count } = req.body;
+
+    if (!topic || !topic.trim()) {
+      return res.status(400).json({
+        error: 'BadRequest',
+        message: 'Topic or subject matter is required for AI generation.'
+      });
+    }
+
+    let targetCategoryName = categoryName || 'General';
+    let targetCategoryId = categoryId || '';
+
+    if (categoryId) {
+      try {
+        const categoryObj = await prisma.category.findUnique({
+          where: { id: categoryId }
+        });
+        if (categoryObj) {
+          targetCategoryName = categoryObj.name;
+        }
+      } catch (e) {}
+    }
+
+    const aiResult = await generateQuizFromAI({
+      topic: topic.trim(),
+      difficulty: difficulty || 'Medium',
+      count: parseInt(count, 10) || 5,
+      categoryName: targetCategoryName
+    });
+
+    const previewQuiz = {
+      title: aiResult.title,
+      description: aiResult.description,
+      timeLimit: aiResult.suggestedTimeLimit,
+      passingScore: aiResult.suggestedPassingScore,
+      categoryId: targetCategoryId,
+      categoryName: targetCategoryName,
+      questions: aiResult.questions
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: 'AI Quiz generated successfully for preview & review.',
+      previewQuiz,
+      quiz: previewQuiz
+    });
+  } catch (err) {
+    console.error('generateAIQuiz error:', err);
+    return res.status(500).json({
+      error: 'InternalServerError',
+      message: 'Failed to generate quiz with AI.',
+      details: err.message
+    });
+  }
+};
+
+// 10. Save AI Quiz Bulk Insert Pipeline (POST /api/quizzes/save-ai-quiz)
+const saveAIQuiz = async (req, res) => {
+  try {
+    const { title, description, categoryId, timeLimit, passingScore, status, questions } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        error: 'BadRequest',
+        message: 'Quiz title is required.'
+      });
+    }
+
+    // 1. Resolve Category ID safely in Database
+    let targetCategoryId = categoryId;
+    if (targetCategoryId) {
+      const catExists = await prisma.category.findUnique({
+        where: { id: targetCategoryId }
+      }).catch(() => null);
+
+      if (!catExists) {
+        targetCategoryId = null;
+      }
+    }
+
+    if (!targetCategoryId) {
+      const firstCat = await prisma.category.findFirst().catch(() => null);
+      if (firstCat) {
+        targetCategoryId = firstCat.id;
+      } else {
+        const newCat = await prisma.category.create({
+          data: {
+            name: 'General AI Domain',
+            description: 'AI Generated Assessment Category'
+          }
+        }).catch(() => null);
+
+        if (newCat) {
+          targetCategoryId = newCat.id;
+        }
+      }
+    }
+
+    // 2. Resolve Creator User ID safely in Database
+    let creatorId = req.dbUser?.id;
+
+    if (!creatorId && (req.auth?.userId || req.headers['x-clerk-user-id'])) {
+      const clerkId = req.auth?.userId || req.headers['x-clerk-user-id'];
+      const dbUser = await prisma.user.findFirst({
+        where: { OR: [{ clerkId }, { id: clerkId }] }
+      }).catch(() => null);
+
+      if (dbUser) {
+        creatorId = dbUser.id;
+      }
+    }
+
+    if (!creatorId) {
+      const adminUser = await prisma.user.findFirst({
+        where: { role: 'ADMIN' }
+      }).catch(() => null);
+
+      if (adminUser) {
+        creatorId = adminUser.id;
+      } else {
+        const anyUser = await prisma.user.findFirst().catch(() => null);
+        if (anyUser) {
+          creatorId = anyUser.id;
+        } else {
+          const newAdmin = await prisma.user.create({
+            data: {
+              clerkId: 'dev_ai_admin',
+              email: 'aiadmin@assessify.ai',
+              name: 'System Admin',
+              role: 'ADMIN',
+              status: 'ACTIVE'
+            }
+          }).catch(() => null);
+
+          if (newAdmin) {
+            creatorId = newAdmin.id;
+          }
+        }
+      }
+    }
+
+    const quizStatus = status && ['DRAFT', 'PUBLISHED', 'ARCHIVED'].includes(status.toUpperCase()) 
+      ? status.toUpperCase() 
+      : 'DRAFT';
+
+    const isPublished = quizStatus === 'PUBLISHED';
+    const questionsArray = Array.isArray(questions) ? questions : [];
+
+    // 3. Create Quiz with nested Questions and Options using Prisma transaction
+    const createdQuiz = await prisma.$transaction(async (tx) => {
+      const newQuiz = await tx.quiz.create({
+        data: {
+          title: title.trim(),
+          description: description ? description.trim() : null,
+          timeLimit: timeLimit ? parseInt(timeLimit, 10) : 15,
+          passingScore: passingScore ? parseInt(passingScore, 10) : 70,
+          status: quizStatus,
+          isPublished,
+          categoryId: targetCategoryId,
+          createdById: creatorId,
+          questions: {
+            create: questionsArray.map((q, qIndex) => {
+              const options = Array.isArray(q.options) ? q.options : [];
+              return {
+                text: q.text || q.questionText || `Question ${qIndex + 1}`,
+                points: Number(q.points) || 1,
+                options: {
+                  create: options.map((opt) => ({
+                    text: opt.text || opt.optionText || '',
+                    isCorrect: Boolean(opt.isCorrect)
+                  }))
+                }
+              };
+            })
+          }
+        },
+        include: {
+          category: { select: { id: true, name: true } },
+          createdBy: { select: { id: true, email: true, name: true } },
+          questions: {
+            include: { options: true }
+          }
+        }
+      });
+      return newQuiz;
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'AI Quiz persisted successfully.',
+      quizId: createdQuiz.id,
+      quiz: {
+        ...createdQuiz,
+        categoryName: createdQuiz.category?.name || 'General Domain',
+        totalQuestions: createdQuiz.questions?.length || questionsArray.length
+      }
+    });
+  } catch (err) {
+    console.error('saveAIQuiz error:', err);
+    return res.status(500).json({
+      error: 'InternalServerError',
+      message: 'Failed to bulk-save AI quiz into database.',
+      details: err.message
+    });
+  }
+};
+
 module.exports = {
   createQuiz,
   getAllQuizzes,
@@ -496,5 +706,7 @@ module.exports = {
   deleteQuiz,
   getStudentQuizzes,
   getStudentQuizById,
-  getStudentQuizQuestions
+  getStudentQuizQuestions,
+  generateAIQuiz,
+  saveAIQuiz
 };

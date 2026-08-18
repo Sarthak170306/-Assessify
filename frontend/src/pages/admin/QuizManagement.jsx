@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useUser, useAuth } from '@clerk/clerk-react';
 import QuestionBuilder from '../../components/admin/QuestionBuilder';
 import QuizStatusToggle from '../../components/admin/QuizStatusToggle';
+import AIQuizGeneratorModal from '../../components/admin/AIQuizGeneratorModal';
+import AIQuizPreviewModal from '../../components/admin/AIQuizPreviewModal';
 import { 
   BookOpen, 
   CheckCircle2, 
@@ -34,6 +36,11 @@ export default function QuizManagement() {
 
   // Question Builder mode state
   const [selectedQuizForBuilder, setSelectedQuizForBuilder] = useState(null);
+
+  // AI Quiz Generator & Preview modal states
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [previewQuizData, setPreviewQuizData] = useState(null);
 
   // Delete modal state
   const [quizToDelete, setQuizToDelete] = useState(null);
@@ -87,13 +94,33 @@ export default function QuizManagement() {
   // Fetch Categories for dropdown select
   const fetchCategories = useCallback(async () => {
     try {
+      let token = null;
+      try { token = await getToken(); } catch (e) {}
+
+      const headers = { 'x-clerk-user-id': user?.id || '' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE_URL}/categories`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.categories) {
+          setCategories(data.categories);
+          return;
+        }
+      }
+      // Fallback categories
       setCategories([
         { id: 'f23b7d8a-995e-4cef-8d39-7c44bac20da1', name: 'Web Development' },
         { id: 'cat-ai-ml', name: 'AI & Machine Learning' },
         { id: 'cat-data-sci', name: 'Data Science' },
       ]);
-    } catch (e) {}
-  }, []);
+    } catch (e) {
+      setCategories([
+        { id: 'f23b7d8a-995e-4cef-8d39-7c44bac20da1', name: 'Web Development' },
+        { id: 'cat-ai-ml', name: 'AI & Machine Learning' }
+      ]);
+    }
+  }, [user, getToken, API_BASE_URL]);
 
   useEffect(() => {
     fetchQuizzes();
@@ -107,19 +134,26 @@ export default function QuizManagement() {
     ));
   };
 
+  // Handle AI Generated Quiz Callback -> Opens AI Preview Modal
+  const handleAiQuizGenerated = (generatedQuiz) => {
+    if (generatedQuiz) {
+      setPreviewQuizData(generatedQuiz);
+      setIsPreviewModalOpen(true);
+    }
+  };
+
+  // Handle AI Save Success Callback
+  const handleAiSaveSuccess = (createdQuiz) => {
+    if (createdQuiz) {
+      setQuizzes(prev => [createdQuiz, ...prev]);
+      fetchQuizzes();
+    }
+  };
+
   // Handle QuestionBuilder Save
   const handleQuestionsSave = async (questions) => {
     if (!selectedQuizForBuilder) return;
     try {
-      let token = null;
-      try { token = await getToken(); } catch (e) {}
-
-      const headers = {
-        'Content-Type': 'application/json',
-        'x-clerk-user-id': user?.id || ''
-      };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
       setQuizzes(prev => prev.map(q => 
         q.id === selectedQuizForBuilder.id 
           ? { ...q, totalQuestions: questions.length, questions } 
@@ -210,7 +244,7 @@ export default function QuizManagement() {
 
       const payload = {
         ...formData,
-        categoryId: formData.categoryId || 'f23b7d8a-995e-4cef-8d39-7c44bac20da1'
+        categoryId: formData.categoryId || (categories[0]?.id || 'f23b7d8a-995e-4cef-8d39-7c44bac20da1')
       };
 
       const res = await fetch(`${API_BASE_URL}/quizzes`, {
@@ -269,13 +303,23 @@ export default function QuizManagement() {
             <span className="hidden sm:inline">Refresh</span>
           </button>
 
+          {/* AI Quiz Generator Trigger Button */}
+          <button
+            type="button"
+            onClick={() => setIsAiModalOpen(true)}
+            className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/25 transition-all cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Generate with AI</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-200 font-medium text-xs flex items-center gap-2 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>+ Create New Quiz</span>
+            <span>Create Quiz</span>
           </button>
         </div>
       </div>
@@ -401,13 +445,15 @@ export default function QuizManagement() {
                           ? 'No quizzes matched your search or status filter criteria.'
                           : 'Get started by creating your very first assessment quiz.'}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setShowCreateModal(true)}
-                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-lg shadow-indigo-600/20 cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4" /> Create Your First Quiz
-                      </button>
+                      <div className="flex items-center justify-center gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setIsAiModalOpen(true)}
+                          className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-medium text-xs inline-flex items-center gap-1.5 shadow-lg shadow-indigo-600/20 cursor-pointer"
+                        >
+                          <Sparkles className="w-4 h-4" /> Generate with AI
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -498,6 +544,23 @@ export default function QuizManagement() {
           </table>
         </div>
       </div>
+
+      {/* AI Quiz Generator Modal */}
+      <AIQuizGeneratorModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+        onQuizGenerated={handleAiQuizGenerated}
+        categories={categories}
+      />
+
+      {/* AI Quiz Verification & Preview Modal */}
+      <AIQuizPreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        previewQuiz={previewQuizData}
+        categories={categories}
+        onSaveSuccess={handleAiSaveSuccess}
+      />
 
       {/* Delete Confirmation Modal */}
       {quizToDelete && (

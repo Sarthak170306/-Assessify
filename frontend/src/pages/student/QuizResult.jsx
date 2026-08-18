@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useUser, useAuth } from '@clerk/clerk-react';
+import AIStudyInsights from '../../components/student/AIStudyInsights';
 import { 
   Award, 
   CheckCircle2, 
@@ -15,7 +16,7 @@ import {
   FileText, 
   HelpCircle, 
   Check, 
-  X 
+  X
 } from 'lucide-react';
 
 /**
@@ -203,7 +204,14 @@ export default function QuizResult() {
         </div>
       </div>
 
-      {/* 3. Question-by-Question Solution Review Section */}
+      {/* 3. AI Diagnostic Performance & Study Guide Component */}
+      <AIStudyInsights 
+        attemptId={attempt.id} 
+        isPassed={attempt.passed} 
+        initialFeedback={attempt.aiFeedback} 
+      />
+
+      {/* 4. Question-by-Question Solution Review Section */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl space-y-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div>
