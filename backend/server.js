@@ -8,6 +8,8 @@ const quizRoutes = require('./src/routes/quizRoutes');
 const categoryRoutes = require('./src/routes/categoryRoutes');
 const studentRoutes = require('./src/routes/studentRoutes');
 const attemptRoutes = require('./src/routes/attemptRoutes');
+const analyticsRoutes = require('./src/routes/analyticsRoutes');
+const leaderboardRoutes = require('./src/routes/leaderboardRoutes');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -66,6 +68,8 @@ app.use('/api/quizzes', quizRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/student', studentRoutes);
 app.use('/api/attempts', attemptRoutes);
+app.use('/api/analytics', analyticsRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 
 // Root route redirect/info
 app.get('/', (req, res) => {

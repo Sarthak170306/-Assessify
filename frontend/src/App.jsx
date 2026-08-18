@@ -16,6 +16,7 @@ import StudentLayout from './components/layouts/StudentLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import QuizManagement from './pages/admin/QuizManagement';
 import CategoryManagement from './pages/admin/CategoryManagement';
+import AdminAnalytics from './pages/admin/AdminAnalytics';
 import PlaceholderView from './pages/PlaceholderView';
 
 // Student Pages (Real Implementations)
@@ -24,6 +25,8 @@ import QuizCatalog from './pages/student/QuizCatalog';
 import QuizDetails from './pages/student/QuizDetails';
 import QuizAttemptEngine from './pages/student/QuizAttemptEngine';
 import QuizResult from './pages/student/QuizResult';
+import StudentAnalytics from './pages/student/Analytics';
+import StudentLeaderboard from './pages/student/Leaderboard';
 
 /**
  * Root Redirector Component
@@ -64,26 +67,10 @@ const UserManagement = () => (
   />
 );
 
-const Analytics = () => (
-  <PlaceholderView
-    title="Analytics & Telemetry"
-    description="View platform metrics, attempt performance, and detailed telemetry."
-    badge="Admin Module"
-  />
-);
-
 const AttemptHistory = () => (
   <PlaceholderView
     title="Attempt History"
     description="View your previous quiz attempts, score breakdowns, and answers."
-    badge="Student Module"
-  />
-);
-
-const Leaderboard = () => (
-  <PlaceholderView
-    title="Global Leaderboard"
-    description="See top student performers and category rankings."
     badge="Student Module"
   />
 );
@@ -116,7 +103,7 @@ export default function App() {
           <Route path="quizzes" element={<QuizManagement />} />
           <Route path="categories" element={<CategoryManagement />} />
           <Route path="users" element={<UserManagement />} />
-          <Route path="analytics" element={<Analytics />} />
+          <Route path="analytics" element={<AdminAnalytics />} />
         </Route>
 
         {/* 4. Student Portal Routes (/student/*) */}
@@ -134,9 +121,10 @@ export default function App() {
           <Route path="quizzes/:id" element={<QuizDetails />} />
           <Route path="quiz/:id/attempt" element={<QuizAttemptEngine />} />
           <Route path="quiz-result/:attemptId" element={<QuizResult />} />
+          <Route path="analytics" element={<StudentAnalytics />} />
           <Route path="history" element={<AttemptHistory />} />
           <Route path="attempts" element={<Navigate to="/student/history" replace />} />
-          <Route path="leaderboard" element={<Leaderboard />} />
+          <Route path="leaderboard" element={<StudentLeaderboard />} />
         </Route>
 
         {/* 5. Legacy & Catch-All Route Handling */}

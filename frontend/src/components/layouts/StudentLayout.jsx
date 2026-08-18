@@ -7,6 +7,7 @@ import {
   Search, 
   History, 
   Trophy, 
+  BarChart3,
   Shield, 
   RefreshCw,
   Menu,
@@ -23,6 +24,7 @@ export default function StudentLayout() {
   const navItems = [
     { label: 'Dashboard', path: '/student/dashboard', icon: LayoutDashboard },
     { label: 'Browse Quizzes', path: '/student/quizzes', icon: Search },
+    { label: 'Analytics', path: '/student/analytics', icon: BarChart3 },
     { label: 'Attempt History', path: '/student/history', icon: History },
     { label: 'Leaderboard', path: '/student/leaderboard', icon: Trophy },
   ];
