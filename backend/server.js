@@ -2,6 +2,16 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const prisma = require('./src/config/prisma');
+
+// Import Security Middleware
+const {
+  securityHeaders,
+  apiRateLimiter,
+  sanitizeInputBody,
+  structuredErrorHandler
+} = require('./src/middleware/security');
+
+// Import Routes
 const userRoutes = require('./src/routes/userRoutes');
 const adminRoutes = require('./src/routes/adminRoutes');
 const quizRoutes = require('./src/routes/quizRoutes');
@@ -14,9 +24,30 @@ const leaderboardRoutes = require('./src/routes/leaderboardRoutes');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS configuration supporting custom headers and local dev origins
+// 1. Security HTTP Headers
+app.use(securityHeaders);
+
+// 2. CORS configuration supporting dynamic production origins & local dev
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:5175',
+  'http://localhost:3000',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
+  'http://127.0.0.1:5175',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'http://127.0.0.1:5175'],
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.endsWith('.vercel.app') || origin.endsWith('.onrender.com')) {
+      return callback(null, true);
+    }
+    return callback(null, true); // Permissive in fallback for API deployment
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-clerk-user-id', 'x-requested-with']
@@ -25,9 +56,13 @@ app.use(cors({
 // OPTIONS Preflight Handler
 app.options('*', cors());
 
-// Body parsing middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 3. Rate Limiter Middleware
+app.use('/api', apiRateLimiter);
+
+// 4. Body parsing & Input Sanitization
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+app.use(sanitizeInputBody);
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -61,7 +96,7 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// API Routes
+// 5. API Routes
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/quizzes', quizRoutes);
@@ -83,19 +118,14 @@ app.get('/', (req, res) => {
 // 404 Handler
 app.use((req, res) => {
   res.status(404).json({
-    error: 'Not Found',
+    success: false,
+    error: 'NotFound',
     message: `Cannot ${req.method} ${req.originalUrl}`
   });
 });
 
-// Global Error Handler
-app.use((err, req, res, next) => {
-  console.error('Unhandled Server Error:', err);
-  res.status(err.status || 500).json({
-    error: err.name || 'InternalServerError',
-    message: err.message || 'An unexpected error occurred on the server.'
-  });
-});
+// 6. Global Structured Error Handler
+app.use(structuredErrorHandler);
 
 // Start Express Server
 app.listen(PORT, () => {

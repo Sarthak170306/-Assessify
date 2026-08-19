@@ -16,16 +16,19 @@ import {
   AlertCircle,
   Layers,
   Award,
-  Zap
+  Zap,
+  Filter
 } from 'lucide-react';
 
 /**
- * Student Leaderboard Page Component with Top 3 Podiums & Interactive Rankings
+ * Student Leaderboard Page Component with Category Filter Tabs, Top 3 Podiums & Sticky Rank Footer
  */
 export default function Leaderboard() {
   const { user } = useUser();
   const { getToken } = useAuth();
 
+  const [categories, setCategories] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('all'); // 'all' | categoryId
   const [timeframe, setTimeframe] = useState('all-time'); // 'all-time' | 'weekly'
   const [searchQuery, setSearchQuery] = useState('');
   const [leaderboardData, setLeaderboardData] = useState([]);
@@ -35,7 +38,25 @@ export default function Leaderboard() {
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
-  // Fetch Leaderboard Data
+  // 1. Fetch Categories for Filter Tabs
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/categories`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && Array.isArray(data.categories)) {
+            setCategories(data.categories);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch categories for leaderboard tabs:', err);
+      }
+    };
+    fetchCategories();
+  }, [API_BASE_URL]);
+
+  // 2. Fetch Leaderboard Data
   const fetchLeaderboard = async () => {
     setIsLoading(true);
     setError(null);
@@ -49,9 +70,12 @@ export default function Leaderboard() {
       };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      const res = await fetch(`${API_BASE_URL}/leaderboard/global?timeframe=${timeframe}&limit=50`, {
-        headers
-      });
+      let url = `${API_BASE_URL}/leaderboard?timeframe=${timeframe}&limit=50`;
+      if (selectedCategory && selectedCategory !== 'all') {
+        url += `&categoryId=${encodeURIComponent(selectedCategory)}`;
+      }
+
+      const res = await fetch(url, { headers });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -59,12 +83,11 @@ export default function Leaderboard() {
       }
 
       const result = await res.json();
-      if (result.success && result.data) {
-        setLeaderboardData(Array.isArray(result.data.leaderboard) ? result.data.leaderboard : []);
-        setUserRank(result.data.userRank || null);
-      } else {
-        throw new Error(result.message || 'Failed to parse leaderboard payload.');
-      }
+      const list = result.leaderboard || result.data?.leaderboard || [];
+      const rankObj = result.userRank || result.data?.userRank || null;
+
+      setLeaderboardData(Array.isArray(list) ? list : []);
+      setUserRank(rankObj);
     } catch (err) {
       console.error('Leaderboard fetch error:', err);
       setError(err.message || 'Failed to load leaderboard. Please try again.');
@@ -75,7 +98,7 @@ export default function Leaderboard() {
 
   useEffect(() => {
     fetchLeaderboard();
-  }, [timeframe, user]);
+  }, [selectedCategory, timeframe, user]);
 
   // Search Filtered Leaderboard Data
   const filteredLeaderboard = useMemo(() => {
@@ -91,9 +114,6 @@ export default function Leaderboard() {
   const rank2 = leaderboardData.find((u) => u.rank === 2) || null;
   const rank3 = leaderboardData.find((u) => u.rank === 3) || null;
 
-  // Remaining Ranks 4+
-  const ranksFourthPlus = filteredLeaderboard.filter((u) => u.rank > 3);
-
   // Helper for Initials Fallback
   const getInitials = (name, email) => {
     if (name) {
@@ -105,17 +125,8 @@ export default function Leaderboard() {
     return 'ST';
   };
 
-  // Helper for Time Formatting
-  const formatSeconds = (totalSec) => {
-    if (!totalSec || totalSec <= 0) return '0m';
-    const mins = Math.floor(totalSec / 60);
-    const secs = totalSec % 60;
-    if (mins > 0) return `${mins}m ${secs}s`;
-    return `${secs}s`;
-  };
-
   return (
-    <div className="space-y-8 font-sans pb-24 relative">
+    <div className="space-y-8 font-sans pb-28 relative animate-fade-in">
       {/* 1. Header & Timeframe Filter Toolbar */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-800/80 pb-5">
         <div>
@@ -128,7 +139,7 @@ export default function Leaderboard() {
                 Platform Leaderboard
               </h1>
               <p className="text-xs text-slate-400">
-                Top performing students ranked by accuracy, completion speed, and assessments cleared.
+                Top performing students ranked by highest score, average accuracy, and assessments cleared.
               </p>
             </div>
           </div>
@@ -185,6 +196,36 @@ export default function Leaderboard() {
         </div>
       </div>
 
+      {/* 2. Scrollable Category Filter Pills */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+        <button
+          type="button"
+          onClick={() => setSelectedCategory('all')}
+          className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer border ${
+            selectedCategory === 'all'
+              ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20'
+              : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+          }`}
+        >
+          🌐 All Categories
+        </button>
+
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            onClick={() => setSelectedCategory(cat.id)}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer border ${
+              selectedCategory === cat.id
+                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20'
+                : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+            }`}
+          >
+            {cat.name}
+          </button>
+        ))}
+      </div>
+
       {/* Error Alert Display */}
       {error && (
         <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-3 shadow-lg">
@@ -202,7 +243,7 @@ export default function Leaderboard() {
         </div>
       )}
 
-      {/* 2. Loading Skeleton View */}
+      {/* 3. Loading Skeleton View */}
       {isLoading ? (
         <div className="space-y-8 animate-pulse">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
@@ -224,7 +265,7 @@ export default function Leaderboard() {
           </div>
           <h3 className="text-lg font-bold text-slate-100">No Leaderboard Rankings Yet</h3>
           <p className="text-xs text-slate-400 leading-relaxed">
-            No completed assessments recorded for {timeframe === 'weekly' ? 'this week' : 'all-time'}. Be the first student to complete an assessment and claim Rank #1!
+            No completed assessments recorded for {selectedCategory !== 'all' ? 'this domain category' : timeframe === 'weekly' ? 'this week' : 'all-time'}. Be the first student to claim Rank #1!
           </p>
           <div className="pt-2">
             <Link
@@ -238,7 +279,7 @@ export default function Leaderboard() {
         </div>
       ) : (
         <>
-          {/* 3. Top 3 Winners Podium Showcase (Desktop & Tablet Grid) */}
+          {/* 4. Top 3 Winners Podium Showcase (Desktop & Tablet Grid) */}
           {!searchQuery && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end pt-4 pb-2">
               {/* RANK 2: Silver (Left) */}
@@ -272,7 +313,7 @@ export default function Leaderboard() {
 
                       <div className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-200 text-xs font-bold font-mono">
                         <Sparkles className="w-3.5 h-3.5 text-slate-300" />
-                        <span>{rank2.totalScorePoints} Points</span>
+                        <span>Score: {rank2.highestScore}%</span>
                       </div>
                     </>
                   ) : (
@@ -283,8 +324,8 @@ export default function Leaderboard() {
                 {rank2 && (
                   <div className="pt-3 border-t border-slate-800/80 flex items-center justify-around text-[11px] text-slate-400">
                     <div>
-                      <span className="block font-bold text-slate-200 font-mono">{rank2.quizzesPassed}</span>
-                      <span className="text-[10px]">Passed</span>
+                      <span className="block font-bold text-slate-200 font-mono">{rank2.totalQuizzesCompleted}</span>
+                      <span className="text-[10px]">Completed</span>
                     </div>
                     <div className="h-6 w-px bg-slate-800" />
                     <div>
@@ -326,7 +367,7 @@ export default function Leaderboard() {
 
                       <div className="mt-3 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-sm font-black font-mono shadow-inner">
                         <Sparkles className="w-4 h-4 text-amber-400" />
-                        <span>{rank1.totalScorePoints} Points</span>
+                        <span>Score: {rank1.highestScore}%</span>
                       </div>
                     </>
                   ) : (
@@ -337,8 +378,8 @@ export default function Leaderboard() {
                 {rank1 && (
                   <div className="pt-3 border-t border-amber-500/20 flex items-center justify-around text-xs text-slate-300">
                     <div>
-                      <span className="block font-extrabold text-amber-400 font-mono text-sm">{rank1.quizzesPassed}</span>
-                      <span className="text-[10px] text-slate-400">Passed</span>
+                      <span className="block font-extrabold text-amber-400 font-mono text-sm">{rank1.totalQuizzesCompleted}</span>
+                      <span className="text-[10px] text-slate-400">Completed</span>
                     </div>
                     <div className="h-6 w-px bg-amber-500/20" />
                     <div>
@@ -380,7 +421,7 @@ export default function Leaderboard() {
 
                       <div className="mt-2 inline-flex items-center gap-1 px-3 py-0.5 rounded-xl bg-slate-800/80 border border-slate-700 text-slate-200 text-xs font-bold font-mono">
                         <Sparkles className="w-3 h-3 text-amber-500" />
-                        <span>{rank3.totalScorePoints} Points</span>
+                        <span>Score: {rank3.highestScore}%</span>
                       </div>
                     </>
                   ) : (
@@ -391,8 +432,8 @@ export default function Leaderboard() {
                 {rank3 && (
                   <div className="pt-2 border-t border-slate-800/80 flex items-center justify-around text-[10px] text-slate-400">
                     <div>
-                      <span className="block font-bold text-slate-200 font-mono">{rank3.quizzesPassed}</span>
-                      <span className="text-[9px]">Passed</span>
+                      <span className="block font-bold text-slate-200 font-mono">{rank3.totalQuizzesCompleted}</span>
+                      <span className="text-[9px]">Completed</span>
                     </div>
                     <div className="h-5 w-px bg-slate-800" />
                     <div>
@@ -405,7 +446,7 @@ export default function Leaderboard() {
             </div>
           )}
 
-          {/* 4. Extended Rankings Table (Ranks 4+) */}
+          {/* 5. Extended Rankings Table */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 backdrop-blur-sm shadow-xl space-y-4">
             <div className="flex items-center justify-between gap-4 border-b border-slate-800 pb-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
@@ -418,12 +459,11 @@ export default function Leaderboard() {
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
-                    <th className="py-3 px-3">Rank</th>
-                    <th className="py-3 px-3">Student</th>
-                    <th className="py-3 px-3">Total Points</th>
-                    <th className="py-3 px-3">Assessments Passed</th>
-                    <th className="py-3 px-3">Avg Accuracy</th>
-                    <th className="py-3 px-3 text-right">Time Invested</th>
+                    <th className="py-3.5 px-4">Rank (#)</th>
+                    <th className="py-3.5 px-4">Student Name & Avatar</th>
+                    <th className="py-3.5 px-4">Highest Score</th>
+                    <th className="py-3.5 px-4">Average Score</th>
+                    <th className="py-3.5 px-4 text-right">Quizzes Completed</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
@@ -432,15 +472,15 @@ export default function Leaderboard() {
 
                     return (
                       <tr 
-                        key={item.userId}
+                        key={item.userId || item.id}
                         className={`transition-colors ${
                           isCurrentUser 
-                            ? 'bg-indigo-950/40 border-l-4 border-l-indigo-500' 
+                            ? 'bg-indigo-950/50 border-l-4 border-l-indigo-500 shadow-md' 
                             : 'hover:bg-slate-800/40'
                         }`}
                       >
-                        {/* Rank Badge */}
-                        <td className="py-3 px-3 font-mono font-bold">
+                        {/* Rank (#) */}
+                        <td className="py-3.5 px-4 font-mono font-bold">
                           <span className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs ${
                             item.rank === 1
                               ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 font-black'
@@ -454,8 +494,8 @@ export default function Leaderboard() {
                           </span>
                         </td>
 
-                        {/* Student User Info */}
-                        <td className="py-3 px-3">
+                        {/* Student Name & Avatar */}
+                        <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
                             {item.imageUrl ? (
                               <img
@@ -483,20 +523,13 @@ export default function Leaderboard() {
                           </div>
                         </td>
 
-                        {/* Total Points */}
-                        <td className="py-3 px-3 font-mono font-bold text-amber-400">
-                          {item.totalScorePoints} pts
+                        {/* Highest Score */}
+                        <td className="py-3.5 px-4 font-mono font-bold text-amber-400 text-sm">
+                          {item.highestScore}%
                         </td>
 
-                        {/* Assessments Passed */}
-                        <td className="py-3 px-3 text-slate-300 font-semibold">
-                          <span className="px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-[11px] font-mono">
-                            {item.quizzesPassed} / {item.totalAttempts} Cleared
-                          </span>
-                        </td>
-
-                        {/* Avg Accuracy */}
-                        <td className="py-3 px-3">
+                        {/* Average Score */}
+                        <td className="py-3.5 px-4">
                           <div className="flex items-center gap-2">
                             <span className="font-mono font-bold text-slate-200">{item.averageScore}%</span>
                             <div className="w-16 bg-slate-800 rounded-full h-1.5 overflow-hidden">
@@ -510,9 +543,11 @@ export default function Leaderboard() {
                           </div>
                         </td>
 
-                        {/* Time Invested */}
-                        <td className="py-3 px-3 text-right font-mono text-slate-400 text-[11px]">
-                          {formatSeconds(item.totalTimeSpentSeconds)}
+                        {/* Quizzes Completed */}
+                        <td className="py-3.5 px-4 text-right">
+                          <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-mono text-xs font-semibold">
+                            {item.totalQuizzesCompleted} Cleared
+                          </span>
                         </td>
                       </tr>
                     );
@@ -522,20 +557,20 @@ export default function Leaderboard() {
             </div>
           </div>
 
-          {/* 5. Sticky Current User Status Float Bar */}
+          {/* 6. Current User Sticky Rank Footer */}
           {userRank && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-xl w-[90%] bg-slate-900/95 border border-indigo-500/40 rounded-2xl p-4 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-4 animate-slide-up">
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-[92%] bg-slate-900/95 border border-indigo-500/40 rounded-2xl p-4 shadow-2xl backdrop-blur-xl flex items-center justify-between gap-4 animate-slide-up">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-xl bg-indigo-600 text-white font-black text-sm font-mono shadow-md">
                   #{userRank.rank}
                 </div>
                 <div>
                   <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
-                    <span>Your Leaderboard Standing</span>
+                    <span>Your Standing: Rank #{userRank.rank}</span>
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                   </div>
                   <div className="text-[11px] text-indigo-300 font-mono">
-                    {userRank.totalScorePoints} Total Points &bull; {userRank.quizzesPassed} Assessments Passed
+                    Avg Score: {userRank.averageScore}% &bull; Quizzes Cleared: {userRank.totalQuizzesCompleted}
                   </div>
                 </div>
               </div>

@@ -1,22 +1,31 @@
 const prisma = require('../config/prisma');
 
 /**
- * Dynamic Global & Quiz-Specific Leaderboards Controller
+ * Dynamic Global & Category-wise Leaderboards Controller (Express + Prisma)
  */
 
-// 1. Get Platform Global All-Time & Weekly Leaderboard
-// GET /api/leaderboard/global?timeframe=all-time|weekly&limit=20
-const getGlobalLeaderboard = async (req, res) => {
+// 1. Get Leaderboard (GET /api/leaderboard)
+// Supports optional categoryId, timeframe, and limit query parameters
+const getLeaderboard = async (req, res) => {
   try {
-    const timeframe = (req.query.timeframe || 'all-time').toLowerCase();
-    const limit = parseInt(req.query.limit, 10) || 20;
+    const { categoryId, timeframe = 'all-time' } = req.query;
+    const limit = parseInt(req.query.limit, 10) || 25;
 
-    // 1. Build Date Filter
+    // 1. Build Prisma Where Clause
     const where = {
       status: 'COMPLETED'
     };
 
-    if (timeframe === 'weekly') {
+    if (categoryId && categoryId !== 'all') {
+      where.quiz = {
+        OR: [
+          { categoryId: categoryId },
+          { category: { name: { equals: categoryId, mode: 'insensitive' } } }
+        ]
+      };
+    }
+
+    if (timeframe.toLowerCase() === 'weekly') {
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
       where.createdAt = { gte: sevenDaysAgo };
     }
@@ -43,13 +52,14 @@ const getGlobalLeaderboard = async (req, res) => {
           select: {
             id: true,
             title: true,
-            passingScore: true
+            passingScore: true,
+            category: { select: { id: true, name: true } }
           }
         }
       }
     }).catch(() => []);
 
-    // 3. Group and Aggregate per User
+    // 3. Group and Aggregate per Student User
     const userMap = {};
     rawAttempts.forEach((a) => {
       const uid = a.userId;
@@ -58,27 +68,32 @@ const getGlobalLeaderboard = async (req, res) => {
       if (!userMap[uid]) {
         userMap[uid] = {
           userId: uid,
+          id: uid,
           clerkId: a.user?.clerkId || '',
           name: a.user?.name || a.user?.email || 'Student User',
           email: a.user?.email || '',
           imageUrl: a.user?.imageUrl || null,
-          totalAttempts: 0,
+          totalQuizzesCompleted: 0,
           quizzesPassed: 0,
           totalScorePoints: 0,
+          totalPoints: 0,
           highestScore: 0,
           totalTimeSpentSeconds: 0
         };
       }
 
-      userMap[uid].totalAttempts++;
-      userMap[uid].totalScorePoints += Math.round(a.score);
-      if (a.score > userMap[uid].highestScore) {
-        userMap[uid].highestScore = Math.round(a.score);
+      userMap[uid].totalQuizzesCompleted += 1;
+      const scoreVal = Math.round(a.score);
+      userMap[uid].totalScorePoints += scoreVal;
+      userMap[uid].totalPoints += scoreVal;
+
+      if (scoreVal > userMap[uid].highestScore) {
+        userMap[uid].highestScore = scoreVal;
       }
 
       const passingScore = a.quiz?.passingScore || 70;
       if (a.score >= passingScore) {
-        userMap[uid].quizzesPassed++;
+        userMap[uid].quizzesPassed += 1;
       }
 
       if (a.completedAt && a.createdAt) {
@@ -87,31 +102,53 @@ const getGlobalLeaderboard = async (req, res) => {
       }
     });
 
-    // 4. Composite Sort
-    // Primary: Total Score Points (Desc)
-    // Secondary: Quizzes Passed (Desc)
-    // Tertiary: Total Time Spent (Asc - faster wins)
-    const sortedLeaderboard = Object.values(userMap).sort((a, b) => {
-      if (b.totalScorePoints !== a.totalScorePoints) {
-        return b.totalScorePoints - a.totalScorePoints;
+    // 4. Rank Sorting Formula:
+    // Primary: highestScore (Desc)
+    // Secondary: averageScore (Desc)
+    // Tertiary: totalQuizzesCompleted (Desc)
+    const processedUsers = Object.values(userMap).map((user) => {
+      const averageScore = user.totalQuizzesCompleted > 0 
+        ? Number((user.totalScorePoints / user.totalQuizzesCompleted).toFixed(1)) 
+        : 0;
+      return {
+        ...user,
+        averageScore
+      };
+    });
+
+    processedUsers.sort((a, b) => {
+      if (b.highestScore !== a.highestScore) {
+        return b.highestScore - a.highestScore;
       }
-      if (b.quizzesPassed !== a.quizzesPassed) {
-        return b.quizzesPassed - a.quizzesPassed;
+      if (b.averageScore !== a.averageScore) {
+        return b.averageScore - a.averageScore;
+      }
+      if (b.totalQuizzesCompleted !== a.totalQuizzesCompleted) {
+        return b.totalQuizzesCompleted - a.totalQuizzesCompleted;
       }
       return a.totalTimeSpentSeconds - b.totalTimeSpentSeconds;
     });
 
-    // 5. Assign Ranks
-    const fullRankedLeaderboard = sortedLeaderboard.map((item, index) => ({
-      rank: index + 1,
-      ...item,
-      averageScore: item.totalAttempts > 0 ? Number((item.totalScorePoints / item.totalAttempts).toFixed(1)) : 0
-    }));
+    // 5. Assign Rank numbers and Medal Badges
+    const fullRankedLeaderboard = processedUsers.map((item, index) => {
+      const rank = index + 1;
+      let badge = null;
+      if (rank === 1) badge = 'GOLD';
+      else if (rank === 2) badge = 'SILVER';
+      else if (rank === 3) badge = 'BRONZE';
 
-    // 6. Slice Top N for response
+      return {
+        rank,
+        badge,
+        medal: badge,
+        ...item
+      };
+    });
+
+    // Slice for limit
     const topLeaderboard = fullRankedLeaderboard.slice(0, limit);
 
-    // 7. Resolve Authenticated User's Current Rank
+    // 6. Resolve Authenticated User's Specific Rank
     const reqClerkId = req.auth?.userId || req.headers['x-clerk-user-id'];
     const reqDbUserId = req.dbUser?.id || req.user?.id;
     let userRank = null;
@@ -123,35 +160,43 @@ const getGlobalLeaderboard = async (req, res) => {
       if (foundUserRank) {
         userRank = {
           rank: foundUserRank.rank,
-          totalScorePoints: foundUserRank.totalScorePoints,
-          quizzesPassed: foundUserRank.quizzesPassed,
-          totalAttempts: foundUserRank.totalAttempts,
-          averageScore: foundUserRank.averageScore
+          averageScore: foundUserRank.averageScore,
+          highestScore: foundUserRank.highestScore,
+          totalQuizzesCompleted: foundUserRank.totalQuizzesCompleted,
+          totalPoints: foundUserRank.totalPoints,
+          quizzesPassed: foundUserRank.quizzesPassed
         };
       }
     }
 
+    const dataPayload = {
+      categoryId: categoryId || 'all',
+      timeframe,
+      totalParticipants: fullRankedLeaderboard.length,
+      leaderboard: topLeaderboard,
+      userRank
+    };
+
     return res.status(200).json({
       success: true,
-      data: {
-        timeframe,
-        totalRankedUsers: fullRankedLeaderboard.length,
-        leaderboard: topLeaderboard,
-        userRank
-      }
+      leaderboard: topLeaderboard,
+      userRank,
+      data: dataPayload
     });
   } catch (err) {
-    console.error('getGlobalLeaderboard error:', err);
+    console.error('getLeaderboard error:', err);
     return res.status(500).json({
       error: 'InternalServerError',
-      message: 'Failed to retrieve global leaderboard rankings.',
+      message: 'Failed to retrieve leaderboard rankings.',
       details: err.message
     });
   }
 };
 
-// 2. Get Quiz-Specific Leaderboard
-// GET /api/leaderboard/quiz/:quizId?limit=15
+// Aliases for route backward compatibility
+const getGlobalLeaderboard = getLeaderboard;
+
+// 2. Get Quiz-Specific Leaderboard (GET /api/leaderboard/quiz/:quizId)
 const getQuizLeaderboard = async (req, res) => {
   try {
     const { quizId } = req.params;
@@ -164,7 +209,6 @@ const getQuizLeaderboard = async (req, res) => {
       });
     }
 
-    // 1. Verify Quiz Existence
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
       select: {
@@ -182,7 +226,6 @@ const getQuizLeaderboard = async (req, res) => {
       });
     }
 
-    // 2. Fetch Completed Attempts for this Quiz
     const attempts = await prisma.attempt.findMany({
       where: {
         quizId,
@@ -205,7 +248,6 @@ const getQuizLeaderboard = async (req, res) => {
       }
     }).catch(() => []);
 
-    // 3. Best-Attempt Per User Deduplication
     const bestUserAttempts = {};
     attempts.forEach((a) => {
       const uid = a.userId;
@@ -224,42 +266,24 @@ const getQuizLeaderboard = async (req, res) => {
         email: a.user?.email || '',
         imageUrl: a.user?.imageUrl || null,
         scorePercentage: a.score,
+        highestScore: a.score,
         isPassed: a.score >= quiz.passingScore,
         timeTakenSeconds,
         completedAt: a.completedAt || a.createdAt
       };
 
-      if (!bestUserAttempts[uid]) {
+      if (!bestUserAttempts[uid] || candidate.scorePercentage > bestUserAttempts[uid].scorePercentage) {
         bestUserAttempts[uid] = candidate;
-      } else {
-        const currentBest = bestUserAttempts[uid];
-        // Compare: Higher Score > Lower TimeTaken > Earlier CompletedAt
-        if (candidate.scorePercentage > currentBest.scorePercentage) {
-          bestUserAttempts[uid] = candidate;
-        } else if (candidate.scorePercentage === currentBest.scorePercentage) {
-          if (candidate.timeTakenSeconds < currentBest.timeTakenSeconds) {
-            bestUserAttempts[uid] = candidate;
-          } else if (candidate.timeTakenSeconds === currentBest.timeTakenSeconds) {
-            if (new Date(candidate.completedAt) < new Date(currentBest.completedAt)) {
-              bestUserAttempts[uid] = candidate;
-            }
-          }
-        }
       }
     });
 
-    // 4. Sort Deduplicated Leaderboard
     const sortedAttempts = Object.values(bestUserAttempts).sort((a, b) => {
       if (b.scorePercentage !== a.scorePercentage) {
         return b.scorePercentage - a.scorePercentage;
       }
-      if (a.timeTakenSeconds !== b.timeTakenSeconds) {
-        return a.timeTakenSeconds - b.timeTakenSeconds;
-      }
-      return new Date(a.completedAt).getTime() - new Date(b.completedAt).getTime();
+      return a.timeTakenSeconds - b.timeTakenSeconds;
     });
 
-    // 5. Assign Ranks
     const rankedLeaderboard = sortedAttempts.slice(0, limit).map((item, index) => ({
       rank: index + 1,
       ...item
@@ -267,6 +291,7 @@ const getQuizLeaderboard = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      leaderboard: rankedLeaderboard,
       data: {
         quizId: quiz.id,
         quizTitle: quiz.title,
@@ -287,6 +312,7 @@ const getQuizLeaderboard = async (req, res) => {
 };
 
 module.exports = {
+  getLeaderboard,
   getGlobalLeaderboard,
   getQuizLeaderboard
 };

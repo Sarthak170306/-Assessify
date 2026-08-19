@@ -27,6 +27,7 @@ import QuizAttemptEngine from './pages/student/QuizAttemptEngine';
 import QuizResult from './pages/student/QuizResult';
 import StudentAnalytics from './pages/student/Analytics';
 import StudentLeaderboard from './pages/student/Leaderboard';
+import StudentAttemptHistory from './pages/student/AttemptHistory';
 
 /**
  * Root Redirector Component
@@ -64,14 +65,6 @@ const UserManagement = () => (
     title="User Management"
     description="Manage user roles, account statuses, and permissions."
     badge="Admin Module"
-  />
-);
-
-const AttemptHistory = () => (
-  <PlaceholderView
-    title="Attempt History"
-    description="View your previous quiz attempts, score breakdowns, and answers."
-    badge="Student Module"
   />
 );
 
@@ -122,7 +115,7 @@ export default function App() {
           <Route path="quiz/:id/attempt" element={<QuizAttemptEngine />} />
           <Route path="quiz-result/:attemptId" element={<QuizResult />} />
           <Route path="analytics" element={<StudentAnalytics />} />
-          <Route path="history" element={<AttemptHistory />} />
+          <Route path="history" element={<StudentAttemptHistory />} />
           <Route path="attempts" element={<Navigate to="/student/history" replace />} />
           <Route path="leaderboard" element={<StudentLeaderboard />} />
         </Route>

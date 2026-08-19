@@ -125,23 +125,32 @@ const submitAttempt = async (req, res) => {
       return newAttempt;
     });
 
+    const resultPayload = {
+      attemptId: attempt.id,
+      id: attempt.id,
+      quizId: targetQuizId,
+      quizTitle: quiz.title,
+      categoryName: quiz.category?.name || 'General Domain',
+      score: scorePercentage,
+      percentage: scorePercentage,
+      passingScore: quiz.passingScore,
+      isPassed: passed,
+      passed,
+      totalQuestions,
+      correctAnswers: correctAnswersCount,
+      correctCount: correctAnswersCount,
+      incorrectAnswers: totalQuestions - correctAnswersCount,
+      incorrectCount: totalQuestions - correctAnswersCount,
+      timeSpentSeconds: timeSpentSeconds || 0,
+      timeTaken: timeSpentSeconds || 0,
+      completedAt: attempt.completedAt
+    };
+
     return res.status(200).json({
       success: true,
       message: 'Assessment submitted and scored successfully.',
-      result: {
-        attemptId: attempt.id,
-        quizId: targetQuizId,
-        quizTitle: quiz.title,
-        categoryName: quiz.category?.name || 'General Domain',
-        score: scorePercentage,
-        passingScore: quiz.passingScore,
-        passed,
-        totalQuestions,
-        correctAnswers: correctAnswersCount,
-        incorrectAnswers: totalQuestions - correctAnswersCount,
-        timeSpentSeconds: timeSpentSeconds || 0,
-        completedAt: attempt.completedAt
-      }
+      result: resultPayload,
+      attempt: resultPayload
     });
   } catch (err) {
     console.error('submitAttempt error:', err);
@@ -153,7 +162,7 @@ const submitAttempt = async (req, res) => {
   }
 };
 
-// 2. Get User Attempt History (GET /api/attempts/history or GET /api/student/history)
+// 2. Get User Attempt History (GET /api/attempts or GET /api/attempts/history)
 const getAttemptHistory = async (req, res) => {
   try {
     let userId = req.dbUser?.id;
@@ -166,7 +175,9 @@ const getAttemptHistory = async (req, res) => {
       if (dbUser) userId = dbUser.id;
     }
 
-    const where = {};
+    const where = {
+      status: 'COMPLETED'
+    };
     if (userId) {
       where.userId = userId;
     }
@@ -181,29 +192,48 @@ const getAttemptHistory = async (req, res) => {
             title: true,
             passingScore: true,
             timeLimit: true,
-            category: { select: { name: true } }
+            category: { select: { id: true, name: true } }
           }
         }
       }
     });
 
-    const formatted = attempts.map((a) => ({
-      id: a.id,
-      quizId: a.quizId,
-      quizTitle: a.quiz?.title || 'Assessment Quiz',
-      categoryName: a.quiz?.category?.name || 'Uncategorized',
-      score: a.score,
-      passingScore: a.quiz?.passingScore || 70,
-      passed: a.score >= (a.quiz?.passingScore || 70),
-      totalQuestions: a.totalQuestions,
-      status: a.status,
-      completedAt: a.completedAt || a.createdAt
-    }));
+    const formattedAttempts = attempts.map((a) => {
+      const passingScore = a.quiz?.passingScore || 70;
+      const isPassed = a.score >= passingScore;
+
+      // Duration calculation
+      let timeTaken = 0;
+      if (a.completedAt && a.createdAt) {
+        const durationMs = new Date(a.completedAt).getTime() - new Date(a.createdAt).getTime();
+        if (durationMs > 0) timeTaken = Math.round(durationMs / 1000);
+      } else if (a.quiz?.timeLimit) {
+        timeTaken = a.quiz.timeLimit * 60;
+      }
+
+      return {
+        id: a.id,
+        attemptId: a.id,
+        quizId: a.quizId,
+        quizTitle: a.quiz?.title || 'Assessment Quiz',
+        categoryName: a.quiz?.category?.name || 'General Domain',
+        score: a.score,
+        percentage: a.score,
+        passingScore,
+        isPassed,
+        passed: isPassed,
+        totalQuestions: a.totalQuestions,
+        status: a.status,
+        timeTaken,
+        completedAt: a.completedAt || a.createdAt,
+        createdAt: a.createdAt
+      };
+    });
 
     return res.status(200).json({
       success: true,
-      count: formatted.length,
-      attempts: formatted
+      count: formattedAttempts.length,
+      attempts: formattedAttempts
     });
   } catch (err) {
     console.error('getAttemptHistory error:', err);
@@ -215,10 +245,20 @@ const getAttemptHistory = async (req, res) => {
   }
 };
 
-// 3. Get Attempt Result Details by ID (GET /api/attempts/:attemptId)
+// Alias for getUserAttemptHistory requirement
+const getUserAttemptHistory = getAttemptHistory;
+
+// 3. Get Attempt Result Details & Answer Review by ID (GET /api/attempts/:id or GET /api/attempts/:attemptId)
 const getAttemptById = async (req, res) => {
   try {
-    const { attemptId } = req.params;
+    const attemptId = req.params.id || req.params.attemptId;
+
+    if (!attemptId) {
+      return res.status(400).json({
+        error: 'BadRequest',
+        message: 'attemptId is required.'
+      });
+    }
 
     const attempt = await prisma.attempt.findUnique({
       where: { id: attemptId },
@@ -260,29 +300,39 @@ const getAttemptById = async (req, res) => {
     });
 
     let correctCount = 0;
+    let incorrectCount = 0;
+    let unansweredCount = 0;
+
     const questionsBreakdown = (quiz.questions || []).map((q) => {
       const userAns = userAnswersMap[q.id] || {};
       const selectedOptionId = userAns.selectedOptionId || null;
       const correctOption = q.options.find((opt) => opt.isCorrect);
 
-      const isUserCorrect = Boolean(
-        selectedOptionId && correctOption && selectedOptionId === correctOption.id
-      );
-
-      if (isUserCorrect) correctCount += 1;
+      let isUserCorrect = false;
+      if (!selectedOptionId) {
+        unansweredCount += 1;
+      } else if (correctOption && selectedOptionId === correctOption.id) {
+        isUserCorrect = true;
+        correctCount += 1;
+      } else {
+        incorrectCount += 1;
+      }
 
       return {
         id: q.id,
         text: q.text,
-        points: q.points,
-        explanation: q.explanation || 'Review correct answer selection and options.',
+        explanation: q.explanation || 'Review question options and core concepts.',
+        points: q.points || 1,
+        marks: q.points || 1,
+        type: q.type || 'MULTIPLE_CHOICE',
+        studentSelectedOptionId: selectedOptionId,
         selectedOptionId,
         correctOptionId: correctOption ? correctOption.id : null,
         isCorrect: isUserCorrect,
-        options: q.options.map((opt) => ({
+        options: (q.options || []).map((opt) => ({
           id: opt.id,
           text: opt.text,
-          isCorrect: opt.isCorrect
+          isCorrect: Boolean(opt.isCorrect)
         }))
       };
     });
@@ -290,27 +340,46 @@ const getAttemptById = async (req, res) => {
     const totalQuestions = attempt.totalQuestions || questionsBreakdown.length;
     const score = attempt.score;
     const passingScore = quiz.passingScore || 70;
-    const passed = score >= passingScore;
+    const isPassed = score >= passingScore;
+
+    // Time Taken
+    let timeTaken = 0;
+    if (attempt.completedAt && attempt.createdAt) {
+      const durationMs = new Date(attempt.completedAt).getTime() - new Date(attempt.createdAt).getTime();
+      if (durationMs > 0) timeTaken = Math.round(durationMs / 1000);
+    } else if (quiz.timeLimit) {
+      timeTaken = quiz.timeLimit * 60;
+    }
+
+    const resultPayload = {
+      id: attempt.id,
+      attemptId: attempt.id,
+      quizId: quiz.id,
+      quizTitle: quiz.title,
+      quizDescription: quiz.description || '',
+      timeLimit: quiz.timeLimit,
+      categoryName: quiz.category?.name || 'General Domain',
+      score,
+      percentage: score,
+      passingScore,
+      isPassed,
+      passed: isPassed,
+      totalQuestions,
+      correctCount,
+      correctAnswers: correctCount,
+      incorrectCount,
+      incorrectAnswers: incorrectCount,
+      unansweredCount,
+      timeTaken,
+      completedAt: attempt.completedAt || attempt.createdAt,
+      aiFeedback: attempt.aiFeedback || null,
+      questions: questionsBreakdown
+    };
 
     return res.status(200).json({
       success: true,
-      attempt: {
-        id: attempt.id,
-        quizId: quiz.id,
-        quizTitle: quiz.title,
-        quizDescription: quiz.description,
-        timeLimit: quiz.timeLimit,
-        categoryName: quiz.category?.name || 'General Domain',
-        score,
-        passingScore,
-        passed,
-        totalQuestions,
-        correctCount,
-        incorrectCount: totalQuestions - correctCount,
-        status: attempt.status,
-        completedAt: attempt.completedAt || attempt.createdAt,
-        questions: questionsBreakdown
-      }
+      result: resultPayload,
+      attempt: resultPayload
     });
   } catch (err) {
     console.error('getAttemptById error:', err);
@@ -322,8 +391,13 @@ const getAttemptById = async (req, res) => {
   }
 };
 
+// Alias for getAttemptResultById requirement
+const getAttemptResultById = getAttemptById;
+
 module.exports = {
   submitAttempt,
   getAttemptHistory,
-  getAttemptById
+  getUserAttemptHistory,
+  getAttemptById,
+  getAttemptResultById
 };
